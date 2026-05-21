@@ -80,6 +80,8 @@ def build_parser() -> argparse.ArgumentParser:
     mm_extract.add_argument("args", nargs=argparse.REMAINDER)
     mm_ui = mm_sub.add_parser("ui", help="Start the multimodal Streamlit UI")
     mm_ui.add_argument("args", nargs=argparse.REMAINDER)
+    mm_serve = mm_sub.add_parser("serve", help="Start the multimodal Streamlit UI")
+    mm_serve.add_argument("args", nargs=argparse.REMAINDER)
     mm_benchmark = mm_sub.add_parser("benchmark", help="Run the multimodal test suite")
     mm_benchmark.add_argument("args", nargs=argparse.REMAINDER)
 
@@ -87,6 +89,8 @@ def build_parser() -> argparse.ArgumentParser:
     compare_sub = compare.add_subparsers(dest="command", metavar="COMMAND")
     compare_ui = compare_sub.add_parser("ui", help="Start the DocComparator Streamlit UI")
     compare_ui.add_argument("args", nargs=argparse.REMAINDER)
+    compare_serve = compare_sub.add_parser("serve", help="Start the DocComparator Streamlit UI")
+    compare_serve.add_argument("args", nargs=argparse.REMAINDER)
 
     return parser
 
@@ -97,7 +101,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     if argv in (["--help"], ["-h"]):
         parser.print_help()
         return 0
-    args = parser.parse_args(argv)
+    if len(argv) == 2 and argv[1] in ("--help", "-h"):
+        help_args = [argv[0], argv[1]]
+        try:
+            parser.parse_args(help_args)
+        except SystemExit as exc:
+            return int(exc.code or 0)
+    args, unknown_args = parser.parse_known_args(argv)
+    if unknown_args:
+        if hasattr(args, "args"):
+            args.args = [*unknown_args, *args.args]
+        else:
+            parser.error(f"unrecognized arguments: {' '.join(unknown_args)}")
 
     if args.modality is None:
         parser.print_help()
@@ -122,12 +137,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.command is None:
                 parser.parse_args(["multimodal", "--help"])
                 return 0
-            require_extra("multimodal", "google.generativeai")
+            if args.command in ("index", "extract", "benchmark"):
+                require_extra("multimodal", "google.generativeai")
             if args.command == "index":
                 return _run_module("MultiModal", "src.indexing.build_md_index", args.args)
             if args.command == "extract":
                 return _run_module("MultiModal", "src.extraction.extract_pdf", args.args)
-            if args.command == "ui":
+            if args.command in ("ui", "serve"):
                 return _run_streamlit("MultiModal", "multimodal", args.args)
             if args.command == "benchmark":
                 return _run_module("MultiModal", "run_test_suite", args.args)
@@ -136,7 +152,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.command is None:
                 parser.parse_args(["compare", "--help"])
                 return 0
-            if args.command == "ui":
+            if args.command in ("ui", "serve"):
                 return _run_streamlit("DocComparator", "compare", args.args)
 
     except MissingExtraError as exc:

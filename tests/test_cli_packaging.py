@@ -70,6 +70,41 @@ def test_minimal_cli_help_does_not_import_optional_dependencies():
     assert "compare" in help_text
 
 
+def test_streamlit_modalities_expose_serve_alias():
+    import pprag.cli
+
+    multimodal_help = io.StringIO()
+    with contextlib.redirect_stdout(multimodal_help):
+        rc = pprag.cli.main(["multimodal", "--help"])
+    assert rc == 0
+    assert "serve" in multimodal_help.getvalue()
+
+    compare_help = io.StringIO()
+    with contextlib.redirect_stdout(compare_help):
+        rc = pprag.cli.main(["compare", "--help"])
+    assert rc == 0
+    assert "serve" in compare_help.getvalue()
+
+
+def test_serve_alias_starts_streamlit_app(monkeypatch):
+    import pprag.cli
+
+    calls = []
+
+    def fake_run_streamlit(project_dir, extra, args):
+        calls.append((project_dir, extra, list(args)))
+        return 0
+
+    monkeypatch.setattr(pprag.cli, "_run_streamlit", fake_run_streamlit)
+
+    assert pprag.cli.main(["multimodal", "serve", "--server.port", "8502"]) == 0
+    assert pprag.cli.main(["compare", "serve", "--server.port", "8503"]) == 0
+    assert calls == [
+        ("MultiModal", "multimodal", ["--server.port", "8502"]),
+        ("DocComparator", "compare", ["--server.port", "8503"]),
+    ]
+
+
 def test_missing_extra_message_names_install_target():
     from pprag.cli import MissingExtraError, require_extra
 

@@ -96,7 +96,7 @@ python -m src.indexing.build_md_index --fresh
 
 ### 6. Start the UI
 ```bash
-streamlit run app.py
+pprag multimodal serve
 ```
 Try a query like:
 

@@ -87,9 +87,9 @@ pprag text index --fresh
 pprag text ask
 
 pprag multimodal index --fresh
-pprag multimodal ui
+pprag multimodal serve
 
-pprag compare ui
+pprag compare serve
 ```
 
 The default install intentionally stays lightweight. If you run a modality without its optional dependencies, the CLI prints the exact extra to install, for example `pip install "pprag[multimodal]"`.

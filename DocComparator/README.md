@@ -106,7 +106,7 @@ cp .env.example .env
 
 ### 5. Start the UI
 ```bash
-streamlit run app.py
+pprag compare serve
 ```
 
 ### 6. Test with pre-loaded documents
