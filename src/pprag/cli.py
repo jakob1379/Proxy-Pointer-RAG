@@ -16,7 +16,11 @@ class MissingExtraError(RuntimeError):
 def require_extra(extra: str, import_name: str):
     try:
         return importlib.import_module(import_name)
-    except ImportError as exc:
+    except ModuleNotFoundError as exc:
+        missing = exc.name or ""
+        top_level = import_name.split(".", 1)[0]
+        if missing and missing != top_level and not import_name.startswith(f"{missing}."):
+            raise
         raise MissingExtraError(
             f"The {extra} runner requires optional dependencies.\n\n"
             f"Install them with:\n\n"
@@ -33,7 +37,10 @@ def _run_module(extra: str, package: str, module: str, args: Sequence[str]) -> i
         module_name = f"{package}.{module}"
         sys.argv = [module_name, *args]
         runpy.run_module(module_name, run_name="__main__")
-    except ImportError as exc:
+    except ModuleNotFoundError as exc:
+        missing = exc.name or ""
+        if missing.startswith(package):
+            raise
         raise MissingExtraError(
             f"The {extra} runner could not import {exc.name or 'a required module'}.\n\n"
             f"Install it with:\n\n"

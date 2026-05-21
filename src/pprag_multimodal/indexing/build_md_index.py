@@ -23,6 +23,7 @@ from pprag_multimodal.config import (
 from pprag_multimodal.indexing.md_tree_builder import (
     build_skeleton_trees, get_md_path_for_doc
 )
+from pprag.faiss_security import require_trusted_faiss_deserialization
 
 import google.generativeai as genai
 from langchain_community.vectorstores import FAISS
@@ -238,6 +239,7 @@ def build_md_index(incremental=True):
             # LangChain FAISS persists metadata via pickle. Only load trusted
             # indexes generated locally by this application; re-ingest raw data
             # instead of using indexes from untrusted sources.
+            require_trusted_faiss_deserialization(save_path, "PP_TRUST_FAISS_INDEX")
             vector_db = FAISS.load_local(
                 save_path, embeddings, allow_dangerous_deserialization=True
             )
@@ -274,7 +276,12 @@ def build_md_index(incremental=True):
         with open(md_path, "r", encoding="utf-8") as f:
             md_lines = f.readlines()
 
-        noise_node_ids = get_noise_node_ids(doc_id, tree_data["structure"])
+        structure = tree_data.get("structure")
+        if not isinstance(structure, list):
+            logging.error("  [Error] Invalid or missing structure for %s", doc_id)
+            continue
+
+        noise_node_ids = get_noise_node_ids(doc_id, structure)
 
         def process_node(node_list, parent_end=None, breadcrumb=""):
             if parent_end is None:
@@ -326,8 +333,7 @@ def build_md_index(incremental=True):
                 if "nodes" in node and node["nodes"]:
                     process_node(node["nodes"], node_end, current_crumb)
 
-        if "structure" in tree_data:
-            process_node(tree_data["structure"])
+        process_node(structure)
 
     if not all_chunks:
         logging.warning("No new chunks generated.")

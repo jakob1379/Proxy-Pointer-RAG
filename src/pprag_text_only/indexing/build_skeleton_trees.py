@@ -27,7 +27,7 @@ def _extract_nodes_from_markdown(markdown_content: str):
 
     Each node: {'title': str, 'line_num': int (1-indexed)}
     """
-    header_pattern = r'^(#{1,6})\s+(.+)$'
+    header_pattern = r'^\s{0,3}(#{1,6})\s+(.+)$'
     code_block_pattern = r'^(?:```|~~~)'
     node_list = []
 
@@ -65,7 +65,7 @@ def _extract_node_text_content(node_list, markdown_lines):
     all_nodes = []
     for node in node_list:
         line_content = markdown_lines[node['line_num'] - 1]
-        header_match = re.match(r'^(#{1,6})', line_content)
+        header_match = re.match(r'^\s{0,3}(#{1,6})\s+', line_content)
 
         if header_match is None:
             logging.warning(
@@ -216,13 +216,13 @@ def build_skeleton_trees(data_dir: str, trees_dir: str):
 
     for file in md_files:
         base_name = os.path.splitext(file)[0]
+        md_path = os.path.join(data_dir, file)
         target_json = os.path.join(trees_dir, f"{base_name}_structure.json")
 
-        if os.path.exists(target_json):
+        if os.path.exists(target_json) and os.path.getmtime(target_json) >= os.path.getmtime(md_path):
             skipped += 1
             continue
 
-        md_path = os.path.join(data_dir, file)
         logging.info(f"Building skeleton tree: {file}...")
 
         try:

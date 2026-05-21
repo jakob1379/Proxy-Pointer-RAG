@@ -15,6 +15,9 @@ import sys
 import json
 import logging
 import time
+import hashlib
+from functools import lru_cache
+from pathlib import Path
 
 from pprag_doc_comparator.config import LLM_MODEL, DOCUMENTS_DIR
 from pprag_doc_comparator.validation.criteria_validator import build_selector_prompt
@@ -157,24 +160,56 @@ def select_relevant_sections(vector_db, doc_id, criteria_query,
     return candidates[:k_final]
 
 
-def load_full_section_text(doc_id, start_line, end_line, data_dir=None):
-    """Load the full section text from the .md file using line ranges."""
+@lru_cache(maxsize=256)
+def resolve_md_path_for_doc_id(doc_id, data_dir=None):
+    """Resolve a generated doc_id to its Markdown path, caching file hashes."""
     if data_dir is None:
         data_dir = str(DOCUMENTS_DIR)
 
-    # Find the md file matching this doc_id
-    for f in os.listdir(data_dir):
-        if f.endswith(".md"):
-            # Check if this file's doc_id matches
-            import hashlib
-            from pathlib import Path
-            md_path = os.path.join(data_dir, f)
+    try:
+        filenames = os.listdir(data_dir)
+    except OSError as exc:
+        logging.warning("Unable to list document directory %s: %s", data_dir, exc)
+        return None
+
+    for filename in filenames:
+        if not filename.endswith(".md"):
+            continue
+        md_path = os.path.join(data_dir, filename)
+        try:
             with open(md_path, "rb") as fh:
                 content_hash = hashlib.sha256(fh.read()).hexdigest()[:12]
-            file_doc_id = f"{Path(md_path).stem}_{content_hash}"
-            if file_doc_id == doc_id:
-                with open(md_path, "r", encoding="utf-8") as fh:
-                    lines = fh.readlines()
-                    return "".join(lines[start_line:end_line]).strip()
-
+        except OSError as exc:
+            logging.warning("Unable to hash markdown file %s: %s", md_path, exc)
+            continue
+        file_doc_id = f"{Path(md_path).stem}_{content_hash}"
+        if file_doc_id == doc_id:
+            return md_path
     return None
+
+
+def load_full_section_text(doc_id, start_line, end_line, data_dir=None, md_path=None):
+    """Load the full section text from the .md file using line ranges."""
+    if data_dir is None:
+        data_dir = str(DOCUMENTS_DIR)
+    if md_path is None:
+        md_path = resolve_md_path_for_doc_id(doc_id, data_dir)
+    if md_path is None:
+        return None
+
+    try:
+        with open(md_path, "r", encoding="utf-8") as fh:
+            lines = fh.readlines()
+    except OSError as exc:
+        logging.warning("Unable to read markdown file %s: %s", md_path, exc)
+        return None
+
+    try:
+        start = int(start_line)
+        end = int(end_line)
+    except (TypeError, ValueError):
+        logging.warning("Invalid section line range for %s: %r-%r", doc_id, start_line, end_line)
+        return None
+    safe_start = max(0, min(len(lines), start))
+    safe_end = max(safe_start, min(len(lines), end))
+    return "".join(lines[safe_start:safe_end]).strip()

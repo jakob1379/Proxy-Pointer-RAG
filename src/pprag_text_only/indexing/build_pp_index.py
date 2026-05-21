@@ -8,8 +8,8 @@ Combined pipeline that:
   Step 3: Builds/updates FAISS vector index
 
 Usage:
-    python -m src.indexing.build_index           # incremental (default)
-    python -m src.indexing.build_index --fresh    # rebuild from scratch
+    python -m pprag_text_only.indexing.build_pp_index           # incremental (default)
+    python -m pprag_text_only.indexing.build_pp_index --fresh    # rebuild from scratch
 """
 import os
 import sys
@@ -23,6 +23,7 @@ from pprag_text_only.config import (
     EMBEDDING_MODEL, EMBEDDING_DIMS, NOISE_FILTER_MODEL
 )
 from pprag_text_only.indexing.build_skeleton_trees import build_skeleton_trees
+from pprag.faiss_security import require_trusted_faiss_deserialization
 
 import google.generativeai as genai
 from langchain_community.vectorstores import FAISS
@@ -133,16 +134,22 @@ Return ONLY a valid JSON object:
 No markdown fencing, no extra text.
 """
 
-    model = genai.GenerativeModel(NOISE_FILTER_MODEL)
-    response = model.generate_content(
-        prompt,
-        generation_config=genai.GenerationConfig(
-            temperature=0.0,
-            max_output_tokens=2048,
+    try:
+        model = genai.GenerativeModel(NOISE_FILTER_MODEL)
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.GenerationConfig(
+                temperature=0.0,
+                max_output_tokens=2048,
+            )
         )
-    )
-
-    text = response.text.strip()
+        text = response.text.strip()
+    except Exception as exc:
+        logging.warning(
+            "  [WARN] Noise filtering unavailable for %s: %s. Proceeding without filter.",
+            doc_name, exc,
+        )
+        return set()
     if text.startswith("```"):
         lines = text.split("\n")
         text = "\n".join(lines[1:-1]).strip()
@@ -197,6 +204,7 @@ def build_proxy_index(incremental=True):
     vector_db = None
     if incremental and os.path.exists(save_path):
         try:
+            require_trusted_faiss_deserialization(save_path, "PP_TRUST_FAISS_INDEX")
             vector_db = FAISS.load_local(
                 save_path, embeddings, allow_dangerous_deserialization=True
             )

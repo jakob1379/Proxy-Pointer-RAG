@@ -81,9 +81,14 @@ def extract_pdf_to_md(pdf_path: str, output_dir: str):
     logger.info(f"Processing ZIP file for {pdf_name}...")
 
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        base_dir = Path(paper_dir).resolve()
         # Extract images from zip into a subfolder
         for member in zip_ref.namelist():
             if any(member.startswith(prefix) for prefix in ADOBE_ASSET_PREFIXES):
+                target_path = (base_dir / member).resolve()
+                if target_path != base_dir and base_dir not in target_path.parents:
+                    logger.warning("Skipping suspicious ZIP member: %s", member)
+                    continue
                 zip_ref.extract(member, paper_dir)
 
         # Read the structural JSON

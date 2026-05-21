@@ -90,8 +90,14 @@ bot = load_bot()
 st.title("📦 MultiModal Proxy-Pointer RAG")
 st.caption("Structural paper exploration with AI-verified visual evidence")
 
+MAX_HISTORY = 50
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
+
+def _trim_messages():
+    st.session_state.messages = st.session_state.messages[-MAX_HISTORY:]
 
 def clean_response_text(text):
     return re.sub(r"\[SHOW:.*?\]", "", text, flags=re.IGNORECASE).strip()
@@ -168,6 +174,7 @@ for message in st.session_state.messages:
 if prompt := st.chat_input("Ask a question..."):
     st.chat_message("user").markdown(prompt)
     st.session_state.messages.append({"role": "user", "content": prompt})
+    _trim_messages()
 
     with st.chat_message("assistant"):
         with st.spinner("Analyzing..."):
@@ -194,9 +201,10 @@ if prompt := st.chat_input("Ask a question..."):
                     "images": result.get("images", []),
                     "paths": result.get("paths", [])
                 })
-            except Exception as err:
+                _trim_messages()
+            except Exception:
                 logging.exception("Multimodal chat failed")
-                error_text = f"Sorry, I couldn't complete that request: {err}"
+                error_text = "Sorry, I couldn't complete that request. Please try again."
                 st.markdown(error_text)
                 st.session_state.messages.append({
                     "role": "assistant",
@@ -204,3 +212,4 @@ if prompt := st.chat_input("Ask a question..."):
                     "images": [],
                     "paths": [],
                 })
+                _trim_messages()

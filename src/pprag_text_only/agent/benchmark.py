@@ -2,9 +2,6 @@ import argparse
 import os
 import sys
 
-# Force UTF-8 encoding for Windows console emoji support
-if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
-    sys.stdout.reconfigure(encoding='utf-8')
 import contextlib
 import io
 import time
@@ -16,6 +13,13 @@ import google.generativeai as genai
 
 from pprag_text_only.config import DATA_DIR, INDEX_DIR, RESULTS_DIR, SYNTH_MODEL
 from pprag_text_only.agent.pp_rag_bot import ProxyPointerRAG
+
+
+def _configure_stdout():
+    """Use UTF-8 for Windows console emoji support when run as a script."""
+    if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+
 
 def retry_api_call(func, *args, max_retries=5, initial_delay=5, **kwargs):
     """Executes a function with exponential backoff on 429/ResourceExhausted errors."""
@@ -100,9 +104,12 @@ For the <icon>, use exactly one of the following:
             line = line.strip()
             if line.startswith("SCORE:"):
                 extracted = line.replace("SCORE:", "").strip()
-                if "🟢" in extracted: score = "🟢"
-                elif "🔴" in extracted: score = "🔴"
-                elif "🟡" in extracted: score = "🟡"
+                if "🟢" in extracted:
+                    score = "🟢"
+                elif "🔴" in extracted:
+                    score = "🔴"
+                elif "🟡" in extracted:
+                    score = "🟡"
             elif line.startswith("NOTES:"):
                 notes = line.replace("NOTES:", "").strip()
         return score, notes
@@ -127,9 +134,11 @@ def run_benchmark(excel_path):
     a_cols = [c for c in df.columns if c.lower() in ["answer", "answers", "ground truth", "ground_truth"]]
 
     if not q_cols or not a_cols:
-        print("Error: Could not find Question and Answer columns in the Excel file.")
-        print("Found columns:", df.columns.tolist())
-        sys.exit(1)
+        found_cols = ", ".join(map(str, df.columns.tolist()))
+        raise ValueError(
+            "Could not find Question/Answer columns in benchmark file. "
+            f"Found: {found_cols}"
+        )
 
     q_col = q_cols[0]
     a_col = a_cols[0]
@@ -283,9 +292,12 @@ def run_benchmark(excel_path):
         yellow_count = 0
         red_count = 0
         for data in scorecard_data:
-            if "🟢" in data["Score"]: green_count += 1
-            elif "🟡" in data["Score"]: yellow_count += 1
-            elif "🔴" in data["Score"]: red_count += 1
+            if "🟢" in data["Score"]:
+                green_count += 1
+            elif "🟡" in data["Score"]:
+                yellow_count += 1
+            elif "🔴" in data["Score"]:
+                red_count += 1
 
             r1 = data["Q#"].ljust(c1)
             r2 = data["Query Subject"].ljust(c2)
@@ -303,6 +315,7 @@ def run_benchmark(excel_path):
     print(f"Scorecard saved to: {scorecard_file}")
 
 if __name__ == "__main__":
+    _configure_stdout()
     parser = argparse.ArgumentParser(description="Run benchmark evaluation on an Excel dataset")
     parser.add_argument("excel_path", help="Path to the Excel benchmark file")
     args = parser.parse_args()

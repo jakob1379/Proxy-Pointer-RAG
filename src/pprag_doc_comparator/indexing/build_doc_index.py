@@ -26,6 +26,7 @@ from pprag_doc_comparator.config import (
     CHUNK_SIZE, CHUNK_OVERLAP
 )
 from pprag_doc_comparator.indexing.build_skeleton_trees import build_skeleton_trees
+from pprag.faiss_security import require_trusted_faiss_deserialization
 
 import google.generativeai as genai
 from langchain_community.vectorstores import FAISS
@@ -211,11 +212,15 @@ def index_single_document(md_path, tree_path, progress_callback=None):
 
     logging.info(f"Processing: {doc_id}...")
 
-    # LLM-based noise filter
-    noise_node_ids = get_noise_node_ids(
-        tree_data.get("doc_name", Path(md_path).stem),
-        tree_data["structure"]
-    )
+    # LLM-based noise filter (best effort)
+    try:
+        noise_node_ids = get_noise_node_ids(
+            tree_data.get("doc_name", Path(md_path).stem),
+            tree_data["structure"]
+        )
+    except Exception as exc:
+        logging.warning("Noise filtering unavailable for %s: %s. Continuing without filter.", doc_id, exc)
+        noise_node_ids = set()
     logging.info(f"  Noise nodes excluded: {len(noise_node_ids)}")
 
     text_splitter = RecursiveCharacterTextSplitter(
@@ -318,6 +323,7 @@ def build_comparator_index(md_paths=None, incremental=True, progress_callback=No
         try:
             # LangChain FAISS stores metadata in a pickle-backed docstore. Only
             # load trusted indexes generated locally by this application.
+            require_trusted_faiss_deserialization(save_path, "DC_TRUST_FAISS_INDEX")
             vector_db = FAISS.load_local(
                 save_path, embeddings, allow_dangerous_deserialization=True
             )

@@ -402,6 +402,10 @@ def extract_to_md(file_path, output_dir):
     Returns the path to the output .md file, or None on failure.
     For .md files, copies to output_dir if not already there.
     """
+    if not os.path.isfile(file_path):
+        logging.error("Input file not found: %s", file_path)
+        return None
+
     ext = os.path.splitext(file_path)[1].lower()
 
     if ext == ".pdf":
@@ -418,11 +422,15 @@ def extract_to_md(file_path, output_dir):
         # Pass-through: copy to output_dir if needed
         base_name = os.path.basename(file_path)
         output_path = os.path.join(output_dir, base_name)
-        if os.path.abspath(file_path) != os.path.abspath(output_path):
-            os.makedirs(output_dir, exist_ok=True)
-            shutil.copy2(file_path, output_path)
-            logging.info(f"  -> Copied MD: {output_path}")
-        return output_path
+        try:
+            if os.path.abspath(file_path) != os.path.abspath(output_path):
+                os.makedirs(output_dir, exist_ok=True)
+                shutil.copy2(file_path, output_path)
+                logging.info(f"  -> Copied MD: {output_path}")
+            return output_path
+        except OSError as exc:
+            logging.error("Failed to copy Markdown input %s: %s", file_path, exc)
+            return None
 
     else:
         logging.error(f"Unsupported file format: {ext}")

@@ -19,13 +19,12 @@ Usage:
 import os
 import sys
 import re
-import hashlib
 import logging
 import time
-from pathlib import Path
 
 from pprag_doc_comparator.config import DOCUMENTS_DIR, LLM_MODEL
 from pprag_doc_comparator.validation.criteria_validator import build_cross_reranker_prompt
+from pprag_doc_comparator.comparison.section_selector import resolve_md_path_for_doc_id
 
 import google.generativeai as genai
 import typing
@@ -37,18 +36,7 @@ class RankingResponse(typing.TypedDict):
 
 def _find_md_path_for_doc_id(doc_id, data_dir=None):
     """Find the .md file path that corresponds to a doc_id."""
-    if data_dir is None:
-        data_dir = str(DOCUMENTS_DIR)
-
-    for f in os.listdir(data_dir):
-        if f.endswith(".md"):
-            md_path = os.path.join(data_dir, f)
-            with open(md_path, "rb") as fh:
-                content_hash = hashlib.sha256(fh.read()).hexdigest()[:12]
-            file_doc_id = f"{Path(md_path).stem}_{content_hash}"
-            if file_doc_id == doc_id:
-                return md_path
-    return None
+    return resolve_md_path_for_doc_id(doc_id, data_dir)
 
 
 def retrieve_matching_sections(vector_db, doc2_id, cross_query,

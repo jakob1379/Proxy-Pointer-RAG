@@ -27,6 +27,7 @@ from langchain_community.vectorstores import FAISS
 from langchain_core.embeddings import Embeddings
 
 from pprag_multimodal.config import DATASET_DIR, TREES_DIR, INDEX_DIR, EMBEDDING_MODEL, EMBEDDING_DIMS, SYNTH_MODEL, VISION_FILTER
+from pprag.faiss_security import require_trusted_faiss_deserialization
 from pprag_multimodal.indexing.md_tree_builder import get_md_path_for_doc
 
 
@@ -71,6 +72,7 @@ def _safe_join_under(base_dir, relative_name):
 
 def _load_trusted_faiss_index(index_path, embeddings):
     """Load locally generated FAISS metadata; never pass untrusted indexes here."""
+    require_trusted_faiss_deserialization(index_path, "PP_TRUST_FAISS_INDEX")
     return FAISS.load_local(
         index_path,
         embeddings,
@@ -204,13 +206,17 @@ Output Example: 4, 12, 0, 9, 2
             # 1. Load full markdown text
             md_path = get_md_path_for_doc(self.dataset_dir, p['doc_id'])
             if md_path:
-                with open(md_path, "r", encoding="utf-8") as f:
-                    lines = f.readlines()
+                try:
+                    with open(md_path, "r", encoding="utf-8") as f:
+                        lines = f.readlines()
                     start = _parse_non_negative_int(p['full_metadata'].get("start_line", 0))
                     end = _parse_non_negative_int(p['full_metadata'].get("end_line", start))
                     safe_start = max(0, min(len(lines), start))
                     safe_end = max(safe_start, min(len(lines), end))
                     section_text = "".join(lines[safe_start:safe_end]) or p['snippet']
+                except (OSError, UnicodeDecodeError) as exc:
+                    logging.warning("Unable to load markdown context for %s: %s", p['doc_id'], exc)
+                    section_text = f"(Full text unavailable) {p['snippet']}"
             else:
                 section_text = f"(Full text missing) {p['snippet']}"
 
@@ -219,8 +225,12 @@ Output Example: 4, 12, 0, 9, 2
             # 2. Extract specific image anchors from tree JSON
             tree_path = os.path.join(self.trees_dir, f"{p['doc_id']}_structure.json")
             if os.path.exists(tree_path):
-                with open(tree_path, "r", encoding="utf-8") as f:
-                    tree_data = json.load(f)
+                try:
+                    with open(tree_path, "r", encoding="utf-8") as f:
+                        tree_data = json.load(f)
+                except (OSError, json.JSONDecodeError) as exc:
+                    logging.warning("Unable to load tree context for %s: %s", p['doc_id'], exc)
+                    tree_data = {}
 
                 def _find_node(node_list, target_id):
                     for node in node_list:
@@ -228,7 +238,8 @@ Output Example: 4, 12, 0, 9, 2
                             return node
                         if node.get("nodes"):
                             found = _find_node(node["nodes"], target_id)
-                            if found: return found
+                            if found:
+                                return found
                     return None
 
                 target_node = _find_node(tree_data.get("structure", []), p['node_id'])
@@ -267,12 +278,12 @@ INSTRUCTIONAL RULES:
 1. Answer the query concisely using ONLY the provided context.
 2. If the context contains a table or figure anchor that answers the query, explicitly mention its ID (e.g. Figure 5).
 3. Do NOT reference internal node IDs (e.g. 'node: 0045') or breadcrumb segments in the body of the answer.
-4. IMAGE SELECTION: If a figure or table mentioned in the context is highly relevant, list its filename and a SHORT caption (including Figure/Table number) in brackets: [SHOW: filename | short caption]. Provide ONE image per bracket. Limit to TOP 6 most relevant.
+4. IMAGE SELECTION: If a figure or table mentioned in the context is highly relevant, list its doc-qualified relative path (`doc_id/filename`) and a SHORT caption (including Figure/Table number) in brackets: [SHOW: doc_id/filename | short caption]. Provide ONE image per bracket. Limit to TOP 6 most relevant.
 
 Output format:
 [Answer Text]
 
-[SHOW: figure1.png | Figure 1: Short caption text]
+[SHOW: paper_id/figure1.png | Figure 1: Short caption text]
 """
         generation_config = genai.GenerationConfig(temperature=0.0)
         response = self._generate_content(synth_prompt, generation_config=generation_config)
@@ -284,24 +295,28 @@ Output format:
         requested_filenames = []
         llm_labels = {}
         for fname, label in img_matches:
-            clean_fname = os.path.basename(fname.strip()).lower()
-            requested_filenames.append(clean_fname)
+            requested_key = fname.strip().replace("\\", "/").lower()
+            clean_fname = os.path.basename(requested_key)
+            requested_filenames.append((requested_key, clean_fname))
             if label:
-                llm_labels[clean_fname] = label.strip()
+                llm_labels[requested_key] = label.strip()
 
-        for clean_fname in requested_filenames:
+        for requested_key, clean_fname in requested_filenames:
             for meta in found_images:
+                meta_rel = str(meta.get("relative_path", "")).strip().replace("\\", "/").lower()
                 meta_fname = os.path.basename(meta["full_path"]).strip().lower()
-                if clean_fname == meta_fname:
+                if ("/" in requested_key and requested_key == meta_rel) or (
+                    "/" not in requested_key and clean_fname == meta_fname
+                ):
                     if meta not in requested_images:
                         # Use LLM description if available, otherwise keep original
-                        if clean_fname in llm_labels:
+                        if requested_key in llm_labels:
                             original_label = meta.get("label", "")
                             if isinstance(original_label, str) and " - " in original_label:
                                 doc_prefix = original_label.rsplit(" - ", 1)[0]
                             else:
                                 doc_prefix = str(original_label or meta_fname)
-                            meta["label"] = f"{doc_prefix} - {llm_labels[clean_fname]}"
+                            meta["label"] = f"{doc_prefix} - {llm_labels[requested_key]}"
                         requested_images.append(meta)
                     break
 

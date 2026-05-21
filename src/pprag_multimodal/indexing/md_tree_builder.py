@@ -49,16 +49,20 @@ def _extract_nodes_from_markdown(markdown_content: str):
     return node_list, lines
 
 def _build_tree_from_nodes(node_list):
-    if not node_list: return []
+    if not node_list:
+        return []
     stack = []
     root_nodes = []
     for node in node_list:
         level = node['level']
         tree_node = {'title': node['title'], 'line_num': node['line_num'], 'figures': node.get('figures', []), 'nodes': []}
-        while stack and stack[-1][1] >= level: stack.pop()
-        if not stack: root_nodes.append(tree_node)
+        while stack and stack[-1][1] >= level:
+            stack.pop()
+        if not stack:
+            root_nodes.append(tree_node)
         else:
-            if 'nodes' not in stack[-1][0]: stack[-1][0]['nodes'] = []
+            if 'nodes' not in stack[-1][0]:
+                stack[-1][0]['nodes'] = []
             stack[-1][0]['nodes'].append(tree_node)
         stack.append((tree_node, level))
     return root_nodes
@@ -67,19 +71,26 @@ def _write_node_ids(data, node_id=1):
     if isinstance(data, dict):
         data['node_id'] = str(node_id).zfill(4)
         node_id += 1
-        if 'nodes' in data: node_id = _write_node_ids(data['nodes'], node_id)
+        if 'nodes' in data:
+            node_id = _write_node_ids(data['nodes'], node_id)
     elif isinstance(data, list):
-        for item in data: node_id = _write_node_ids(item, node_id)
+        for item in data:
+            node_id = _write_node_ids(item, node_id)
     return node_id
 
 def _format_structure(structure, order=None):
-    if not order: return structure
+    if not order:
+        return structure
     if isinstance(structure, dict):
-        if 'nodes' in structure: structure['nodes'] = _format_structure(structure['nodes'], order)
-        if not structure.get('nodes'): structure.pop('nodes', None)
-        if not structure.get('figures'): structure.pop('figures', None)
+        if 'nodes' in structure:
+            structure['nodes'] = _format_structure(structure['nodes'], order)
+        if not structure.get('nodes'):
+            structure.pop('nodes', None)
+        if not structure.get('figures'):
+            structure.pop('figures', None)
         structure = {k: structure[k] for k in order if k in structure}
-    elif isinstance(structure, list): structure = [_format_structure(item, order) for item in structure]
+    elif isinstance(structure, list):
+        structure = [_format_structure(item, order) for item in structure]
     return structure
 
 def md_to_skeleton_tree(md_path: str) -> dict:
@@ -119,7 +130,8 @@ def build_skeleton_trees(dataset_dir, out_dir):
 
 def get_md_path_for_doc(dataset_dir, doc_id):
     for root, dirs, files in os.walk(dataset_dir):
-        if f"{doc_id}.md" in files: return os.path.join(root, f"{doc_id}.md").replace("\\", "/")
+        if f"{doc_id}.md" in files:
+            return os.path.join(root, f"{doc_id}.md").replace("\\", "/")
     return None
 
 if __name__ == "__main__":

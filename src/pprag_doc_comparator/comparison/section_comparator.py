@@ -120,6 +120,9 @@ ANALYSIS: [2-3 sentence explanation focused on PRACTICAL IMPLICATIONS: missing p
         return {
             "rating": "UNKNOWN",
             "analysis": f"Comparison failed: {e}",
+            "shared": "",
+            "role": "",
+            "risk": "",
             "doc2_excerpt": "",
             "doc2_title": doc2_title,
         }

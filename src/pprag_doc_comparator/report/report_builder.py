@@ -76,7 +76,7 @@ def build_executive_summary(criteria, doc1_name, doc2_name, doc_type,
     </tr>
     <tr>
       <td style="border: 1px solid #cbd5e1; padding: 12px;">Comparisons Performed</td>
-      <td style="border: 1px solid #cbd5e1; padding: 12px;">{red + yellow + green}</td>
+      <td style="border: 1px solid #cbd5e1; padding: 12px;">{total_comparisons}</td>
     </tr>
     <tr>
       <td style="border: 1px solid #cbd5e1; padding: 12px;">🔴 Significant Discrepancies</td>

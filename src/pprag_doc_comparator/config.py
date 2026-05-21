@@ -8,8 +8,6 @@ import logging
 from pathlib import Path
 from dotenv import load_dotenv
 
-import warnings
-warnings.filterwarnings("ignore", category=FutureWarning)
 import google.generativeai as genai
 
 def _default_project_root(subproject: str) -> Path:
@@ -34,7 +32,6 @@ if google_api_key:
     genai.configure(api_key=google_api_key)
 else:
     logging.warning("GOOGLE_API_KEY is not set; Gemini API calls will fail until it is configured.")
-logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 # ── Paths ───────────────────────────────────────────────────────────────
 UPLOADS_DIR   = Path(os.getenv("DC_UPLOADS_DIR",   PROJECT_ROOT / "data" / "uploads"))

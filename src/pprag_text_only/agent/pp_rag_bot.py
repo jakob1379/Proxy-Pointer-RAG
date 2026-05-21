@@ -9,7 +9,7 @@ Interactive RAG bot that:
   5. LLM synthesizer generates grounded answers
 
 Usage:
-    python -m src.agent.rag_bot
+    python -m pprag_text_only.agent.pp_rag_bot
 """
 import os
 import re
@@ -18,6 +18,7 @@ import logging
 from collections.abc import Sequence as SequenceABC
 
 from pprag_text_only.config import DATA_DIR, INDEX_DIR, EMBEDDING_MODEL, EMBEDDING_DIMS, SYNTH_MODEL
+from pprag.faiss_security import require_trusted_faiss_deserialization
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,7 @@ def _load_trusted_faiss_index(index_path, embeddings):
     Only pass paths that this application created locally or that the user has
     explicitly chosen to trust; never load indexes from untrusted downloads.
     """
+    require_trusted_faiss_deserialization(index_path, "PP_TRUST_FAISS_INDEX")
     return FAISS.load_local(
         index_path,
         embeddings,

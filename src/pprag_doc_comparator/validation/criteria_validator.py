@@ -111,11 +111,23 @@ RESPONSE FORMAT (JSON only, no markdown fencing):
         except Exception as e:
             if "429" in str(e) or "Resource exhausted" in str(e):
                 if attempt == max_retries - 1:
-                    raise e
+                    logging.error("Criteria validation failed after retries: %s", e)
+                    response = None
+                    break
                 delay = base_delay * (2 ** attempt)
                 time.sleep(delay)
             else:
-                raise e
+                logging.error("Criteria validation request failed: %s", e)
+                response = None
+                break
+
+    if response is None:
+        return {
+            "feasible": False,
+            "reason": "Criteria validation is temporarily unavailable. Please retry validation before proceeding.",
+            "suggested_criteria": [],
+            "document_type_detected": "document",
+        }
 
     text = response.text.strip()
     if text.startswith("```"):

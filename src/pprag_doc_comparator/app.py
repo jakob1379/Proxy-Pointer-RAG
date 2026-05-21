@@ -33,7 +33,9 @@ from pprag_doc_comparator.validation.criteria_validator import (
     build_cross_retrieval_query,
     build_comparison_prompt,
 )
-from pprag_doc_comparator.comparison.section_selector import select_relevant_sections, load_full_section_text
+from pprag_doc_comparator.comparison.section_selector import (
+    select_relevant_sections, load_full_section_text, resolve_md_path_for_doc_id
+)
 from pprag_doc_comparator.comparison.cross_retriever import retrieve_matching_sections
 from pprag_doc_comparator.comparison.section_comparator import (
     compare_sections, extract_rating
@@ -42,6 +44,7 @@ from pprag_doc_comparator.report.report_builder import (
     build_executive_summary, build_section_block,
     assemble_report
 )
+from pprag.faiss_security import require_trusted_faiss_deserialization
 
 from langchain_community.vectorstores import FAISS
 
@@ -192,6 +195,16 @@ def save_uploaded_file(uploaded_file, dest_dir):
     return str(dest_path)
 
 
+def uploaded_file_signature(uploaded_file):
+    """Stable signature for avoiding repeated extraction/indexing reruns."""
+    data = uploaded_file.getvalue()
+    return {
+        "name": Path(uploaded_file.name).name,
+        "size": len(data),
+        "sha256": hashlib.sha256(data).hexdigest(),
+    }
+
+
 def get_tree_path(md_path):
     """Get the expected tree JSON path for a given .md file."""
     base_name = Path(md_path).stem
@@ -204,6 +217,7 @@ def load_index():
     if os.path.exists(save_path):
         embeddings = GeminiEmbeddings()
         try:
+            require_trusted_faiss_deserialization(save_path, "DC_TRUST_FAISS_INDEX")
             return FAISS.load_local(
                 save_path, embeddings, allow_dangerous_deserialization=True
             )
@@ -230,6 +244,7 @@ if "stage" not in st.session_state:
     st.session_state.depth_mode = "Standard"
     st.session_state.report_md = ""
     st.session_state.vector_db = None
+    st.session_state.prepared_inputs = None
     st.session_state.is_running = False
 
 
@@ -319,54 +334,84 @@ if st.session_state.get("is_running", False) and doc1_file and doc2_file and st.
         progress_bar.progress(min(pct, 100))
         status_text.markdown(f"**{msg}**")
 
-    # ── Phase 1: Save & Convert (10%) ────────────────────────────────────
-    update_progress(2, "📥 Saving uploaded files...")
+    # ── Phase 1-3: Prepare reusable inputs (save, convert, tree, index) ────
+    prep_key = (uploaded_file_signature(doc1_file), uploaded_file_signature(doc2_file))
+    prepared = st.session_state.get("prepared_inputs")
 
-    doc1_path = save_uploaded_file(doc1_file, str(UPLOADS_DIR))
-    doc2_path = save_uploaded_file(doc2_file, str(UPLOADS_DIR))
+    if prepared and prepared.get("key") == prep_key:
+        update_progress(15, "♻️ Reusing prepared documents and vector index...")
+        doc1_path = prepared["doc1_path"]
+        doc2_path = prepared["doc2_path"]
+        doc1_md = prepared["doc1_md"]
+        doc2_md = prepared["doc2_md"]
+        doc1_tree = prepared["doc1_tree"]
+        doc2_tree = prepared["doc2_tree"]
+        vector_db = prepared["vector_db"]
+        doc1_id = prepared["doc1_id"]
+        doc2_id = prepared["doc2_id"]
+    else:
+        # ── Phase 1: Save & Convert (10%) ────────────────────────────────
+        update_progress(2, "📥 Saving uploaded files...")
 
-    update_progress(5, "📝 Converting documents to Markdown...")
+        doc1_path = save_uploaded_file(doc1_file, str(UPLOADS_DIR))
+        doc2_path = save_uploaded_file(doc2_file, str(UPLOADS_DIR))
 
-    os.makedirs(str(DOCUMENTS_DIR), exist_ok=True)
-    doc1_md = extract_to_md(doc1_path, str(DOCUMENTS_DIR))
-    doc2_md = extract_to_md(doc2_path, str(DOCUMENTS_DIR))
+        update_progress(5, "📝 Converting documents to Markdown...")
 
-    if not doc1_md or not doc2_md:
-        st.error("❌ Failed to convert one or both documents to Markdown.")
-        st.stop()
+        os.makedirs(str(DOCUMENTS_DIR), exist_ok=True)
+        doc1_md = extract_to_md(doc1_path, str(DOCUMENTS_DIR))
+        doc2_md = extract_to_md(doc2_path, str(DOCUMENTS_DIR))
 
+        if not doc1_md or not doc2_md:
+            st.error("❌ Failed to convert one or both documents to Markdown.")
+            st.stop()
+
+        # ── Phase 2: Build Trees (15%) ───────────────────────────────────
+        update_progress(10, "🌳 Building document structure trees...")
+
+        os.makedirs(str(TREES_DIR), exist_ok=True)
+        build_skeleton_trees(str(DOCUMENTS_DIR), str(TREES_DIR))
+
+        doc1_tree = get_tree_path(doc1_md)
+        doc2_tree = get_tree_path(doc2_md)
+
+        if not os.path.exists(doc1_tree) or not os.path.exists(doc2_tree):
+            st.error("❌ Failed to build structure trees for one or both documents.")
+            st.stop()
+
+        # ── Phase 3: Build Index (25%) ───────────────────────────────────
+        update_progress(15, "📊 Building vector index...")
+
+        vector_db, doc_ids = build_comparator_index(
+            md_paths=[doc1_md, doc2_md],
+            incremental=True,
+            progress_callback=lambda msg: update_progress(20, msg)
+        )
+
+        if vector_db is None:
+            st.error("❌ Failed to build vector index.")
+            st.stop()
+
+        doc1_id = get_doc_id(doc1_md)
+        doc2_id = get_doc_id(doc2_md)
+        st.session_state.prepared_inputs = {
+            "key": prep_key,
+            "doc1_path": doc1_path,
+            "doc2_path": doc2_path,
+            "doc1_md": doc1_md,
+            "doc2_md": doc2_md,
+            "doc1_tree": doc1_tree,
+            "doc2_tree": doc2_tree,
+            "vector_db": vector_db,
+            "doc1_id": doc1_id,
+            "doc2_id": doc2_id,
+        }
+
+    st.session_state.doc1_path = doc1_path
+    st.session_state.doc2_path = doc2_path
     st.session_state.doc1_md_path = doc1_md
     st.session_state.doc2_md_path = doc2_md
-
-    # ── Phase 2: Build Trees (15%) ───────────────────────────────────────
-    update_progress(10, "🌳 Building document structure trees...")
-
-    os.makedirs(str(TREES_DIR), exist_ok=True)
-    build_skeleton_trees(str(DOCUMENTS_DIR), str(TREES_DIR))
-
-    doc1_tree = get_tree_path(doc1_md)
-    doc2_tree = get_tree_path(doc2_md)
-
-    if not os.path.exists(doc1_tree) or not os.path.exists(doc2_tree):
-        st.error("❌ Failed to build structure trees for one or both documents.")
-        st.stop()
-
-    # ── Phase 3: Build Index (25%) ───────────────────────────────────────
-    update_progress(15, "📊 Building vector index...")
-
-    vector_db, doc_ids = build_comparator_index(
-        md_paths=[doc1_md, doc2_md],
-        incremental=True,
-        progress_callback=lambda msg: update_progress(20, msg)
-    )
-
-    if vector_db is None:
-        st.error("❌ Failed to build vector index.")
-        st.stop()
-
     st.session_state.vector_db = vector_db
-    doc1_id = get_doc_id(doc1_md)
-    doc2_id = get_doc_id(doc2_md)
     st.session_state.doc1_id = doc1_id
     st.session_state.doc2_id = doc2_id
 
@@ -416,8 +461,11 @@ if st.session_state.get("is_running", False) and doc1_file and doc2_file and st.
     update_progress(35, f"Found {len(doc1_sections)} relevant sections in {doc1_name}")
 
     # Load full text for each Doc 1 section
+    doc1_md_path = resolve_md_path_for_doc_id(doc1_id, str(DOCUMENTS_DIR))
     for sec in doc1_sections:
-        full_text = load_full_section_text(doc1_id, sec["start_line"], sec["end_line"])
+        full_text = load_full_section_text(
+            doc1_id, sec["start_line"], sec["end_line"], md_path=doc1_md_path
+        )
         sec["full_text"] = full_text or sec.get("content", "")
 
     # ── Phase 6: Compare Sections (35% → 90%) ───────────────────────────

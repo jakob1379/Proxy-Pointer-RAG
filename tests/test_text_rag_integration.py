@@ -107,6 +107,7 @@ def test_pprag_text_cli_builds_queryable_rag_index(tmp_path, monkeypatch):
     monkeypatch.setenv("PP_DATA_DIR", str(data_dir))
     monkeypatch.setenv("PP_TREES_DIR", str(trees_dir))
     monkeypatch.setenv("PP_INDEX_DIR", str(index_dir))
+    monkeypatch.setenv("PP_TRUST_FAISS_INDEX", "1")
 
     import pprag.cli
 

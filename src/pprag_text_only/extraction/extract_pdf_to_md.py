@@ -6,8 +6,8 @@ Reads from data/pdf/, writes to data/documents/.
 Skips PDFs that already have a corresponding .md file.
 
 Usage:
-    python -m src.extraction.extract_pdf_to_md              # batch convert all
-    python -m src.extraction.extract_pdf_to_md --file x.pdf # single file
+    python -m pprag_text_only.extraction.extract_pdf_to_md              # batch convert all
+    python -m pprag_text_only.extraction.extract_pdf_to_md --file x.pdf # single file
 """
 import os
 import sys
@@ -25,14 +25,12 @@ def extract_pdf(pdf_path, output_dir):
     """Convert a single PDF to Markdown using LlamaParse."""
     try:
         from llama_cloud import LlamaCloud
-    except ImportError:
-        logging.error("llama-cloud not installed. Run: pip install llama-cloud")
-        sys.exit(1)
+    except ImportError as exc:
+        raise RuntimeError("llama-cloud not installed. Run: pip install llama-cloud") from exc
 
     api_key = os.getenv("LLAMA_CLOUD_API_KEY")
     if not api_key:
-        logging.error("LLAMA_CLOUD_API_KEY not set in .env")
-        sys.exit(1)
+        raise RuntimeError("LLAMA_CLOUD_API_KEY not set in .env")
 
     base_name = os.path.splitext(os.path.basename(pdf_path))[0]
     output_path = os.path.join(output_dir, f"{base_name}.md")

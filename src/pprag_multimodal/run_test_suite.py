@@ -9,7 +9,7 @@ from pprag_multimodal.config import INDEX_DIR, TREES_DIR, DATASET_DIR, RESULTS_D
 
 # Ensure results dir exists
 results_path = Path(RESULTS_DIR)
-results_path.mkdir(exist_ok=True)
+results_path.mkdir(parents=True, exist_ok=True)
 
 def run_suite():
     # 1. Load Queries from results dir
@@ -46,6 +46,21 @@ def run_suite():
         qid = q.get("id")
         text_query = q.get("query")
         category = q.get("category")
+
+        if not isinstance(text_query, str) or not text_query.strip():
+            results_log.append({
+                "id": qid,
+                "category": category,
+                "query": text_query,
+                "response": "",
+                "sources": [],
+                "images_found": [],
+                "time_seconds": 0.0,
+                "error": "Invalid query: expected non-empty string",
+            })
+            save_results(i + 1)
+            print(f"[{i+1}/{len(queries)}] -> ERROR: invalid query payload")
+            continue
 
         print(f"[{i+1}/{len(queries)}] Running Query: {text_query[:60]}...")
 
