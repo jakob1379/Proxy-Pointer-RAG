@@ -67,8 +67,17 @@ source venv/bin/activate  # macOS/Linux
 ```
 
 ### 3. Install dependencies
+
+From the repository root, install the multimodal extra:
+
 ```bash
-pip install -r requirements.txt
+pip install "pprag[multimodal]"
+```
+
+For local development inside this subproject, you can also use the migrated `pyproject.toml`:
+
+```bash
+uv sync --project MultiModal
 ```
 
 ### 4. Configure API keys

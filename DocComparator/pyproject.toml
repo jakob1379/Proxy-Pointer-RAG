@@ -1,0 +1,17 @@
+[project]
+name = "pprag-doc-comparator"
+version = "0.0.1"
+requires-python = ">=3.10"
+dependencies = [
+    "google-generativeai",
+    "langchain-community",
+    "langchain-core",
+    "langchain-text-splitters",
+    "faiss-cpu",
+    "python-dotenv",
+    "streamlit",
+    "llama-cloud",
+]
+
+[tool.uv]
+package = false

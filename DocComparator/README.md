@@ -83,8 +83,17 @@ source venv/bin/activate  # macOS/Linux
 ```
 
 ### 3. Install dependencies
+
+From the repository root, install the comparison extra:
+
 ```bash
-pip install -r requirements.txt
+pip install "pprag[compare]"
+```
+
+For local development inside this subproject, you can also use the migrated `pyproject.toml`:
+
+```bash
+uv sync --project DocComparator
 ```
 
 ### 4. Configure API keys

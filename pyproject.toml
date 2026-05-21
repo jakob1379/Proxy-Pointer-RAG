@@ -1,0 +1,82 @@
+[project]
+name = "pprag"
+version = "0.1.0"
+description = "Proxy-Pointer RAG suite for text, multimodal, and cross-document comparison workflows"
+readme = "README.md"
+authors = [
+    { name = "Jakob Stender Guldberg", email = "jakob1379@gmail.com" }
+]
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+text = [
+    "google-generativeai",
+    "langchain-community",
+    "langchain-core",
+    "langchain-text-splitters",
+    "faiss-cpu",
+    "python-dotenv",
+    "pandas",
+    "openpyxl",
+    "llama-cloud",
+]
+multimodal = [
+    "streamlit",
+    "google-generativeai",
+    "pillow",
+    "python-dotenv",
+    "faiss-cpu",
+    "numpy",
+    "markdown",
+    "langchain-community",
+    "langchain-core",
+    "langchain-text-splitters",
+    "pdfservices-sdk",
+]
+compare = [
+    "google-generativeai",
+    "langchain-community",
+    "langchain-core",
+    "langchain-text-splitters",
+    "faiss-cpu",
+    "python-dotenv",
+    "streamlit",
+    "llama-cloud",
+]
+full = [
+    "google-generativeai",
+    "langchain-community",
+    "langchain-core",
+    "langchain-text-splitters",
+    "faiss-cpu",
+    "python-dotenv",
+    "pandas",
+    "openpyxl",
+    "llama-cloud",
+    "streamlit",
+    "pillow",
+    "numpy",
+    "markdown",
+    "pdfservices-sdk",
+]
+
+[project.scripts]
+pprag = "pprag.cli:main"
+proxy-pointer-rag = "proxy_pointer_rag:main"
+
+[dependency-groups]
+test = [
+    "pytest>=9.0.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.14,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.uv.workspace]
+members = [
+    "DocComparator",
+    "MultiModal",
+    "Text-Only",
+]

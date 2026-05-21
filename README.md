@@ -70,7 +70,31 @@ For the full technical story behind the architecture:
 
 ## Quick Start
 
-Each implementation has its own self-contained README with a 5-minute quickstart:
+Install only the modality you need:
+
+```bash
+pip install pprag                 # minimal CLI shell
+pip install "pprag[text]"         # text-only structural RAG
+pip install "pprag[multimodal]"   # multimodal RAG with visual citations
+pip install "pprag[compare]"      # cross-document comparison
+pip install "pprag[full]"         # all modalities
+```
+
+Then choose the workflow from the `pprag` CLI:
+
+```bash
+pprag text index --fresh
+pprag text ask
+
+pprag multimodal index --fresh
+pprag multimodal ui
+
+pprag compare ui
+```
+
+The default install intentionally stays lightweight. If you run a modality without its optional dependencies, the CLI prints the exact extra to install, for example `pip install "pprag[multimodal]"`.
+
+Each implementation also has its own self-contained README with a 5-minute quickstart:
 
 - **[Text-Only → Get Started](./Text-Only/README.md)**
 - **[MultiModal → Get Started](./MultiModal/README.md)**

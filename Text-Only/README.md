@@ -89,8 +89,16 @@ source venv/bin/activate
 
 ### 3. Install dependencies
 
+From the repository root, install the text-only extra:
+
 ```bash
-pip install -r requirements.txt
+pip install "pprag[text]"
+```
+
+For local development inside this subproject, you can also use the migrated `pyproject.toml`:
+
+```bash
+uv sync --project Text-Only
 ```
 
 ### 4. Configure API keys
