@@ -19,7 +19,7 @@ def test_package_exposes_pprag_script_and_modality_extras():
     project = load_pyproject()["project"]
 
     assert project["name"] == "pprag"
-    assert project["scripts"]["pprag"] == "pprag.cli:main"
+    assert project["scripts"] == {"pprag": "pprag.cli:main"}
 
     extras = project["optional-dependencies"]
     assert {"text", "multimodal", "compare", "full"}.issubset(extras)

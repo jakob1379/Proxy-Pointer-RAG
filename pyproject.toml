@@ -63,7 +63,6 @@ full = [
 
 [project.scripts]
 pprag = "pprag.cli:main"
-proxy-pointer-rag = "proxy_pointer_rag:main"
 
 [dependency-groups]
 test = [
