@@ -2,23 +2,20 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import importlib.resources as resources
 import runpy
 import subprocess
 import sys
-from pathlib import Path
 from typing import Sequence
-
-
-ROOT = Path(__file__).resolve().parents[2]
 
 
 class MissingExtraError(RuntimeError):
     """Raised when a modality command is used without its optional extra."""
 
 
-def require_extra(extra: str, import_name: str) -> None:
+def require_extra(extra: str, import_name: str):
     try:
-        importlib.import_module(import_name)
+        return importlib.import_module(import_name)
     except ImportError as exc:
         raise MissingExtraError(
             f"The {extra} runner requires optional dependencies.\n\n"
@@ -29,29 +26,32 @@ def require_extra(extra: str, import_name: str) -> None:
         ) from exc
 
 
-def _run_module(project_dir: str, module: str, args: Sequence[str]) -> int:
-    sys.path.insert(0, str(ROOT / project_dir))
+def _run_module(extra: str, package: str, module: str, args: Sequence[str]) -> int:
+    require_extra(extra, package)
     old_argv = sys.argv[:]
-    old_cwd = Path.cwd()
     try:
-        sys.argv = [module, *args]
-        # Preserve each migrated implementation's existing relative data/config paths.
-        import os
-        os.chdir(ROOT / project_dir)
-        runpy.run_module(module, run_name="__main__")
+        module_name = f"{package}.{module}"
+        sys.argv = [module_name, *args]
+        runpy.run_module(module_name, run_name="__main__")
+    except ImportError as exc:
+        raise MissingExtraError(
+            f"The {extra} runner could not import {exc.name or 'a required module'}.\n\n"
+            f"Install it with:\n\n"
+            f"  pip install \"pprag[{extra}]\"\n\n"
+            f"Or install everything with:\n\n"
+            f"  pip install \"pprag[full]\""
+        ) from exc
     finally:
         sys.argv = old_argv
-        os.chdir(old_cwd)
-        try:
-            sys.path.remove(str(ROOT / project_dir))
-        except ValueError:
-            pass
     return 0
 
 
-def _run_streamlit(project_dir: str, extra: str, args: Sequence[str]) -> int:
+def _run_streamlit(extra: str, package: str, args: Sequence[str]) -> int:
     require_extra(extra, "streamlit")
-    return subprocess.call([sys.executable, "-m", "streamlit", "run", "app.py", *args], cwd=ROOT / project_dir)
+    require_extra(extra, package)
+    app = resources.files(package).joinpath("app.py")
+    with resources.as_file(app) as app_path:
+        return subprocess.call([sys.executable, "-m", "streamlit", "run", str(app_path), *args])
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -123,37 +123,34 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.command is None:
                 parser.parse_args(["text", "--help"])
                 return 0
-            require_extra("text", "google.generativeai")
             if args.command == "index":
-                return _run_module("Text-Only", "src.indexing.build_pp_index", args.args)
+                return _run_module("text", "pprag_text_only", "indexing.build_pp_index", args.args)
             if args.command == "ask":
-                return _run_module("Text-Only", "src.agent.pp_rag_bot", args.args)
+                return _run_module("text", "pprag_text_only", "agent.pp_rag_bot", args.args)
             if args.command == "extract":
-                return _run_module("Text-Only", "src.extraction.extract_pdf_to_md", args.args)
+                return _run_module("text", "pprag_text_only", "extraction.extract_pdf_to_md", args.args)
             if args.command == "benchmark":
-                return _run_module("Text-Only", "src.agent.benchmark", args.args)
+                return _run_module("text", "pprag_text_only", "agent.benchmark", args.args)
 
         if args.modality == "multimodal":
             if args.command is None:
                 parser.parse_args(["multimodal", "--help"])
                 return 0
-            if args.command in ("index", "extract", "benchmark"):
-                require_extra("multimodal", "google.generativeai")
             if args.command == "index":
-                return _run_module("MultiModal", "src.indexing.build_md_index", args.args)
+                return _run_module("multimodal", "pprag_multimodal", "indexing.build_md_index", args.args)
             if args.command == "extract":
-                return _run_module("MultiModal", "src.extraction.extract_pdf", args.args)
+                return _run_module("multimodal", "pprag_multimodal", "extraction.extract_pdf", args.args)
             if args.command in ("ui", "serve"):
-                return _run_streamlit("MultiModal", "multimodal", args.args)
+                return _run_streamlit("multimodal", "pprag_multimodal", args.args)
             if args.command == "benchmark":
-                return _run_module("MultiModal", "run_test_suite", args.args)
+                return _run_module("multimodal", "pprag_multimodal", "run_test_suite", args.args)
 
         if args.modality == "compare":
             if args.command is None:
                 parser.parse_args(["compare", "--help"])
                 return 0
             if args.command in ("ui", "serve"):
-                return _run_streamlit("DocComparator", "compare", args.args)
+                return _run_streamlit("compare", "pprag_doc_comparator", args.args)
 
     except MissingExtraError as exc:
         parser.exit(2, f"{exc}\n")

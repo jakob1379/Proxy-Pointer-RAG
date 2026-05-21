@@ -73,6 +73,14 @@ test = [
 requires = ["uv_build>=0.11.14,<0.12.0"]
 build-backend = "uv_build"
 
+[tool.uv.build-backend]
+module-name = [
+    "pprag",
+    "pprag_text_only",
+    "pprag_multimodal",
+    "pprag_doc_comparator",
+]
+
 [tool.uv.workspace]
 members = [
     "DocComparator",

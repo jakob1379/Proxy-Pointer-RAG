@@ -1,9 +1,11 @@
 import builtins
 import contextlib
+import importlib
 import io
 import pathlib
 import sys
 import tomllib
+import types
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -13,6 +15,35 @@ if str(SRC) not in sys.path:
 
 def load_pyproject():
     return tomllib.loads((ROOT / "pyproject.toml").read_text())
+
+
+@contextlib.contextmanager
+def fake_google_genai():
+    google = types.ModuleType("google")
+    genai = types.ModuleType("google.generativeai")
+    genai.configure = lambda **kwargs: None
+    google.generativeai = genai
+
+    old_google = sys.modules.get("google")
+    old_genai = sys.modules.get("google.generativeai")
+    sys.modules["google"] = google
+    sys.modules["google.generativeai"] = genai
+    try:
+        yield
+    finally:
+        if old_google is None:
+            sys.modules.pop("google", None)
+        else:
+            sys.modules["google"] = old_google
+        if old_genai is None:
+            sys.modules.pop("google.generativeai", None)
+        else:
+            sys.modules["google.generativeai"] = old_genai
+
+
+def reload_module(name):
+    sys.modules.pop(name, None)
+    return importlib.import_module(name)
 
 
 def test_package_exposes_pprag_script_and_modality_extras():
@@ -31,6 +62,72 @@ def test_package_exposes_pprag_script_and_modality_extras():
     full = set(extras["full"])
     for extra_name in ("text", "multimodal", "compare"):
         assert set(extras[extra_name]).issubset(full)
+
+    modules = load_pyproject()["tool"]["uv"]["build-backend"]["module-name"]
+    assert {"pprag", "pprag_text_only", "pprag_multimodal", "pprag_doc_comparator"}.issubset(modules)
+
+
+def test_cli_dispatch_uses_importable_modality_packages():
+    cli_source = (SRC / "pprag" / "cli.py").read_text()
+
+    assert "parents[2]" not in cli_source
+    assert '"Text-Only"' not in cli_source
+    assert '"MultiModal"' not in cli_source
+    assert '"DocComparator"' not in cli_source
+    assert "pprag_text_only" in cli_source
+    assert "pprag_multimodal" in cli_source
+    assert "pprag_doc_comparator" in cli_source
+
+
+def test_packaged_configs_default_to_working_tree_not_site_packages(monkeypatch, tmp_path):
+    monkeypatch.chdir(ROOT)
+    for key in (
+        "PP_PROJECT_ROOT",
+        "PPRAG_PROJECT_ROOT",
+        "DC_PROJECT_ROOT",
+        "PP_PDF_DIR",
+        "PP_DATA_DIR",
+        "PP_TREES_DIR",
+        "PP_INDEX_DIR",
+        "PP_RESULTS_DIR",
+        "DC_UPLOADS_DIR",
+        "DC_DOCUMENTS_DIR",
+        "DC_TREES_DIR",
+        "DC_INDEX_DIR",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    with fake_google_genai():
+        text_config = reload_module("pprag_text_only.config")
+        multimodal_config = reload_module("pprag_multimodal.config")
+        compare_config = reload_module("pprag_doc_comparator.config")
+
+    assert text_config.PROJECT_ROOT == ROOT / "Text-Only"
+    assert text_config.DATA_DIR == ROOT / "Text-Only" / "data" / "documents"
+    assert pathlib.Path(multimodal_config.BASE_DIR) == ROOT / "MultiModal"
+    assert pathlib.Path(multimodal_config.PDF_DIR) == ROOT / "MultiModal" / "data" / "pdf"
+    assert pathlib.Path(multimodal_config.DATASET_DIR) == ROOT / "MultiModal" / "data" / "extracted_papers"
+    assert compare_config.PROJECT_ROOT == ROOT / "DocComparator"
+    assert compare_config.DOCUMENTS_DIR == ROOT / "DocComparator" / "data" / "documents"
+
+    explicit_root = tmp_path / "runtime"
+    explicit_root.mkdir()
+    monkeypatch.setenv("PPRAG_PROJECT_ROOT", str(explicit_root))
+    with fake_google_genai():
+        text_config = reload_module("pprag_text_only.config")
+        multimodal_config = reload_module("pprag_multimodal.config")
+
+    assert text_config.PROJECT_ROOT == explicit_root
+    assert pathlib.Path(multimodal_config.BASE_DIR) == explicit_root
+
+
+def test_multimodal_extract_uses_configured_paths():
+    extract_source = (SRC / "pprag_multimodal" / "extraction" / "extract_pdf.py").read_text()
+
+    assert "Path(__file__).parent.parent.parent" not in extract_source
+    assert "from pprag_multimodal.config import DATASET_DIR, PDF_DIR" in extract_source
+    assert "pdf_dir = Path(PDF_DIR)" in extract_source
+    assert "output_dir = Path(DATASET_DIR)" in extract_source
 
 
 def test_minimal_cli_help_does_not_import_optional_dependencies():
@@ -55,6 +152,8 @@ def test_minimal_cli_help_does_not_import_optional_dependencies():
 
     builtins.__import__ = guarded_import
     try:
+        sys.modules.pop("pprag.cli", None)
+        sys.modules.pop("pprag", None)
         import pprag.cli
 
         output = io.StringIO()
@@ -91,8 +190,8 @@ def test_serve_alias_starts_streamlit_app(monkeypatch):
 
     calls = []
 
-    def fake_run_streamlit(project_dir, extra, args):
-        calls.append((project_dir, extra, list(args)))
+    def fake_run_streamlit(extra, package, args):
+        calls.append((extra, package, list(args)))
         return 0
 
     monkeypatch.setattr(pprag.cli, "_run_streamlit", fake_run_streamlit)
@@ -100,8 +199,28 @@ def test_serve_alias_starts_streamlit_app(monkeypatch):
     assert pprag.cli.main(["multimodal", "serve", "--server.port", "8502"]) == 0
     assert pprag.cli.main(["compare", "serve", "--server.port", "8503"]) == 0
     assert calls == [
-        ("MultiModal", "multimodal", ["--server.port", "8502"]),
-        ("DocComparator", "compare", ["--server.port", "8503"]),
+        ("multimodal", "pprag_multimodal", ["--server.port", "8502"]),
+        ("compare", "pprag_doc_comparator", ["--server.port", "8503"]),
+    ]
+
+
+def test_text_commands_dispatch_to_text_package(monkeypatch):
+    import pprag.cli
+
+    calls = []
+
+    def fake_run_module(extra, package, module, args):
+        calls.append((extra, package, module, list(args)))
+        return 0
+
+    monkeypatch.setattr(pprag.cli, "_run_module", fake_run_module)
+
+    assert pprag.cli.main(["text", "index", "--fresh"]) == 0
+    assert pprag.cli.main(["text", "ask"]) == 0
+
+    assert calls == [
+        ("text", "pprag_text_only", "indexing.build_pp_index", ["--fresh"]),
+        ("text", "pprag_text_only", "agent.pp_rag_bot", []),
     ]
 
 

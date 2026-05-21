@@ -95,10 +95,11 @@ From the repository root, install the text-only extra:
 pip install "pprag[text]"
 ```
 
-For local development inside this subproject, you can also use the migrated `pyproject.toml`:
+For local development, `uv sync --project Text-Only` targets the directory that contains this subproject's `pyproject.toml`. When you mean the workspace member by package name, prefer `uv sync --package pprag-text` (`[project].name` in `Text-Only/pyproject.toml`):
 
 ```bash
 uv sync --project Text-Only
+uv sync --package pprag-text
 ```
 
 ### 4. Configure API keys

@@ -80,7 +80,7 @@ def fake_gemini():
 
 def clear_text_only_modules():
     for name in list(sys.modules):
-        if name == "src" or name.startswith("src."):
+        if name == "pprag_text_only" or name.startswith("pprag_text_only."):
             sys.modules.pop(name, None)
 
 
@@ -118,10 +118,8 @@ def test_pprag_text_cli_builds_queryable_rag_index(tmp_path, monkeypatch):
         assert (index_dir / "index.faiss").exists()
         assert (index_dir / "index.pkl").exists()
 
-        text_project = ROOT / "Text-Only"
-        sys.path.insert(0, str(text_project))
         try:
-            from src.agent.pp_rag_bot import ProxyPointerRAG
+            from pprag_text_only.agent.pp_rag_bot import ProxyPointerRAG
 
             rag = ProxyPointerRAG(index_path=index_dir, data_dir=data_dir)
             pointers = rag.retrieve_unique_nodes("How does Project Aurora use retrieval citations?", k_search=5, k_final=2)
@@ -134,5 +132,4 @@ def test_pprag_text_cli_builds_queryable_rag_index(tmp_path, monkeypatch):
             assert "Sources:" in answer
             assert "fixture > Project Aurora > Retrieval Architecture" in answer
         finally:
-            sys.path.remove(str(text_project))
             clear_text_only_modules()
